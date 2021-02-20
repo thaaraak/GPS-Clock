@@ -28,6 +28,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
+#include <stdlib.h>
 
 /* USER CODE END Includes */
 
@@ -80,6 +82,27 @@ uint8_t digits[10] = {
 		0b00000001,
 		0b00001001
 };
+
+typedef struct POS {
+	int 	degrees;
+	float  	minutes;
+	char	direction;
+} Pos;
+
+typedef struct GPSINFO {
+	int hours;
+	int mins;
+	int secs;
+
+	Pos latitude;
+	Pos longitude;
+} GPSInfo;
+
+void printUART( const char* format, ...);
+void parseGPS( char *g, GPSInfo* gpsInfo );
+void parseGGA( char *g, GPSInfo* gpsInfo );
+int display( GPSInfo* gpsInfo, int idx );
+
 
 /* USER CODE END 0 */
 
@@ -148,14 +171,15 @@ int main(void)
   printUART( "\r\nStarting GPS Receive\r\n\r\n" );
   HAL_UART_Receive_IT(&huart6, (uint8_t *)buf, 1);
 
+  GPSInfo	gpsInfo;
+
   while (1)
   {
 
 	  if ( gpsfound )
-		  parseGPS();
+		  parseGPS( gpsdata, &gpsInfo );
 
-
-	  int digit = display( displayNumber, currentIdx );
+	  display( &gpsInfo, currentIdx );
 	  currentIdx++;
 
 	  if ( currentIdx >= MAX_IDX )
@@ -166,7 +190,7 @@ int main(void)
 	  if ( HAL_GetTick() - tim > 1000 )
 	  {
 		  tim = HAL_GetTick();
-		  displayNumber++;
+//		  displayNumber++;
 	  }
 
 
@@ -180,7 +204,7 @@ int main(void)
 
 	  HAL_GPIO_WritePin( GPIOB, GPIO_PIN_2, GPIO_PIN_SET );
 
-	  /*
+
 	  HAL_GPIO_WritePin( GPIOB, GPIO_PIN_1, GPIO_PIN_RESET );
 	  HAL_Delay(2);
 	  HAL_GPIO_WritePin( GPIOB, GPIO_PIN_1, GPIO_PIN_SET );
@@ -202,7 +226,7 @@ int main(void)
 	  HAL_Delay(2);
 	  HAL_GPIO_WritePin( GPIOC, GPIO_PIN_13, GPIO_PIN_SET );
 
-	  /*
+
 	  flashPin( GPIOA, GPIO_PIN_0);
 	  flashPin( GPIOA, GPIO_PIN_1);
 	  flashPin( GPIOA, GPIO_PIN_2);
@@ -263,8 +287,11 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 
 
-int display( int num, int idx )
+int display( GPSInfo* gpsInfo, int idx )
 {
+
+	int num = gpsInfo->hours * 10000 + gpsInfo->mins * 100 + gpsInfo->secs;
+
 	int val = pow( 10, idx+1 );
 	int digit = ( num % val ) / (val/10);
 
@@ -314,6 +341,12 @@ void flashPin(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin, GPIO_PinState PinState)
 
 }
 
+
+/*
+ Simple "printf" that goes to the UART. Note that if you need to print
+ floats then you need to include "-u _printf_float" in the Linker>Miscellaneous>Tool Settings
+ */
+
 void printUART( const char* format, ...)
 {
 	char buf[512];
@@ -323,7 +356,7 @@ void printUART( const char* format, ...)
 	  vsprintf(buf, format, args);
 	  va_end(args);
 
-	  HAL_UART_Transmit(&huart1, buf, strlen(buf), 1000 );
+	  HAL_UART_Transmit(&huart1, (uint8_t*)buf, strlen(buf), 1000 );
 
 }
 
@@ -345,17 +378,52 @@ $GPVTG,144.75,T,,M,1.20,N,2.23,K,A*3E
 
  *
  */
-void parseGPS()
+void parseGPS( char *g, GPSInfo* gpsInfo )
 {
-    char *saveptr, *token;
+    //printUART( "%s\n", g );
 
-    printUART( "%s\n", gpsdata );
-
-    token = strtok_r(gpsdata, ",", &saveptr);
-    while ( token != NULL )
-        token = strtok_r(NULL, ",", &saveptr);
+    if ( strncmp( "$GPGGA", g, 6 ) == 0 ) {
+    	parseGGA( g, gpsInfo );
+    }
 
 	gpsfound = false;
+}
+
+/*
+
+Parse the GPGGA message and extract the UTC time, latitude and longitude
+
+       UTC Time   Latitude    Longitude
+       ---------- ----------- ------------
+$GPGGA,203716.000,3300.2942,N,09711.7508,W,1,6,2.74,161.7,M,-23.8,M,,*64
+
+*/
+
+void parseGGA( char *g, GPSInfo *gpsInfo )
+{
+	char *saveptr, *token;
+
+    //printUART( "Found GPGGA\r\n", g );
+
+	token = strtok_r(g, ",", &saveptr);
+
+	if ( token == NULL )
+		return;
+
+	char *utctime = strtok_r(NULL, ",", &saveptr);
+
+	if ( utctime == NULL )
+		return;
+
+	int tim = atoi( utctime );
+
+	gpsInfo->hours = tim / 10000;
+	gpsInfo->mins = ( tim - gpsInfo->hours * 10000 ) / 100;
+	gpsInfo->secs = tim % 100;
+
+	//printUART( "Time: [%s] %02d:%02d:%02d\r\n", utctime, gpsInfo->hours, gpsInfo->mins, gpsInfo->secs );
+
+	char *lat = strtok_r(NULL, ",", &saveptr);
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
