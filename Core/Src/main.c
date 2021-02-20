@@ -145,7 +145,7 @@ int main(void)
   int tim = HAL_GetTick();
   memset( rbuf, 0, BUF_SIZE );
 
-  HAL_UART_Transmit(&huart1, "Hello", 5, 1000 );
+  printUART( "\r\nStarting GPS Receive\r\n\r\n" );
   HAL_UART_Receive_IT(&huart6, (uint8_t *)buf, 1);
 
   while (1)
@@ -154,7 +154,7 @@ int main(void)
 	  if ( gpsfound )
 		  parseGPS();
 
-	  /*
+
 	  int digit = display( displayNumber, currentIdx );
 	  currentIdx++;
 
@@ -327,6 +327,24 @@ void printUART( const char* format, ...)
 
 }
 
+
+/*
+ *
+ *
+
+Sample GPS Messages
+
+$GPGGA,203716.000,3300.2942,N,09711.7508,W,1,6,2.74,161.7,M,-23.8,M,,*64
+$GPGLL,3300.2942,N,09711.7508,W,203716.000,A,A*43
+$GPGSA,A,3,27,30,14,28,07,08,,,,,,,2.89,2.74,0.91*0E
+$GPGSV,3,1,12,07,76,037,17,08,51,050,22,30,50,321,10,14,38,277,15*7A
+$GPGSV,3,2,12,28,34,272,32,09,34,189,18,21,26,108,,01,18,135,*76
+$GPGSV,3,3,12,27,13,040,16,17,13,208,,04,07,165,,13,06,324,*70
+$GPRMC,203716.000,A,3300.2942,N,09711.7508,W,1.20,144.75,170221,,,A*73
+$GPVTG,144.75,T,,M,1.20,N,2.23,K,A*3E
+
+ *
+ */
 void parseGPS()
 {
     char *saveptr, *token;
