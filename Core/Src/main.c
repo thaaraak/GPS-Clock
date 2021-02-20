@@ -19,6 +19,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "rtc.h"
 #include "usart.h"
 #include "gpio.h"
 
@@ -90,18 +91,19 @@ typedef struct POS {
 } Pos;
 
 typedef struct GPSINFO {
-	int hours;
-	int mins;
-	int secs;
-
-	Pos latitude;
-	Pos longitude;
+	int 	hours;
+	int 	mins;
+	int 	secs;
+	bool 	valid;
+	Pos 	latitude;
+	Pos 	longitude;
 } GPSInfo;
 
 void printUART( const char* format, ...);
 void parseGPS( char *g, GPSInfo* gpsInfo );
 void parseGGA( char *g, GPSInfo* gpsInfo );
-int display( GPSInfo* gpsInfo, int idx );
+void parseGSA( char *g, GPSInfo* gpsInfo );
+int displayTime( GPSInfo* gpsInfo, int idx );
 
 
 /* USER CODE END 0 */
@@ -136,6 +138,7 @@ int main(void)
   MX_GPIO_Init();
   MX_USART6_UART_Init();
   MX_USART1_UART_Init();
+  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -164,7 +167,6 @@ int main(void)
   int currentIdx = 0;
   int MAX_IDX = 6;
 
-  int displayNumber = 123456;
   int tim = HAL_GetTick();
   memset( rbuf, 0, BUF_SIZE );
 
@@ -179,7 +181,7 @@ int main(void)
 	  if ( gpsfound )
 		  parseGPS( gpsdata, &gpsInfo );
 
-	  display( &gpsInfo, currentIdx );
+	  displayTime( &gpsInfo, currentIdx );
 	  currentIdx++;
 
 	  if ( currentIdx >= MAX_IDX )
@@ -189,8 +191,11 @@ int main(void)
 
 	  if ( HAL_GetTick() - tim > 1000 )
 	  {
+		  RTC_TimeTypeDef sTime;
+		  HAL_StatusTypeDef rtcstat = HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
+
 		  tim = HAL_GetTick();
-//		  displayNumber++;
+
 	  }
 
 
@@ -253,6 +258,7 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
 
   /** Configure the main internal regulator output voltage
   */
@@ -261,9 +267,10 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -282,12 +289,18 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_RTC;
+  PeriphClkInitStruct.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
 /* USER CODE BEGIN 4 */
 
 
-int display( GPSInfo* gpsInfo, int idx )
+int displayTime( GPSInfo* gpsInfo, int idx )
 {
 
 	int num = gpsInfo->hours * 10000 + gpsInfo->mins * 100 + gpsInfo->secs;
@@ -367,14 +380,26 @@ void printUART( const char* format, ...)
 
 Sample GPS Messages
 
-$GPGGA,203716.000,3300.2942,N,09711.7508,W,1,6,2.74,161.7,M,-23.8,M,,*64
-$GPGLL,3300.2942,N,09711.7508,W,203716.000,A,A*43
-$GPGSA,A,3,27,30,14,28,07,08,,,,,,,2.89,2.74,0.91*0E
-$GPGSV,3,1,12,07,76,037,17,08,51,050,22,30,50,321,10,14,38,277,15*7A
-$GPGSV,3,2,12,28,34,272,32,09,34,189,18,21,26,108,,01,18,135,*76
-$GPGSV,3,3,12,27,13,040,16,17,13,208,,04,07,165,,13,06,324,*70
-$GPRMC,203716.000,A,3300.2942,N,09711.7508,W,1.20,144.75,170221,,,A*73
-$GPVTG,144.75,T,,M,1.20,N,2.23,K,A*3E
+GPS at Startup
+
+$GPGGA,235959.262,,,,,0,0,,,M,,M,,*4F
+$GPGLL,,,,,235959.262,V,N*7D
+$GPGSA,A,1,,,,,,,,,,,,,,,*1E
+$GPGSV,1,1,00*79
+$GPRMC,235959.262,V,,,,,0.00,0.00,050180,,,N*46
+$GPVTG,0.00,T,,M,0.00,N,0.00,K,N*32
+
+
+GPS with Lock
+
+$GPGGA,203831.000,3333.2945,N,09744.7542,W,1,6,2.75,163.8,M,-23.8,M,,*6B
+$GPGLL,3333.2945,N,09744.7542,W,203831.000,A,A*40
+$GPGSA,A,3,27,30,14,28,07,08,,,,,,,2.90,2.75,0.91*07
+$GPGSV,3,1,12,07,76,040,21,30,51,322,22,08,50,050,20,14,38,278,22*74
+$GPGSV,3,2,12,28,35,273,32,09,34,189,18,21,27,107,,01,18,135,*78
+$GPGSV,3,3,12,17,14,208,,27,13,040,17,13,06,324,,04,06,165,*77
+$GPRMC,203831.000,A,3333.2945,N,09744.7542,W,0.98,192.52,170221,,,A*7C
+$GPVTG,192.52,T,,M,0.98,N,1.81,K,A*39
 
  *
  */
@@ -385,9 +410,53 @@ void parseGPS( char *g, GPSInfo* gpsInfo )
     if ( strncmp( "$GPGGA", g, 6 ) == 0 ) {
     	parseGGA( g, gpsInfo );
     }
+    else if ( strncmp( "$GPGSA", g, 6 ) == 0 ) {
+    	parseGSA( g, gpsInfo );
+    }
 
 	gpsfound = false;
 }
+
+/*
+
+Parse the GPGSA message to determine whether a fix is available
+
+         1 = No Fix, 2 = 2D Fix, 3 = 3D Fix
+         ---------- ----------- ------------
+$GPGSA,A,3,27,30,14,28,07,08,,,,,,,2.90,2.75,0.91*07
+
+*/
+
+void parseGSA( char *g, GPSInfo *gpsInfo )
+{
+	char *saveptr, *token;
+
+    //printUART( "Found GPGSA\r\n", g );
+
+	token = strtok_r(g, ",", &saveptr);
+
+	if ( token == NULL )
+		return;
+
+	char *mode = strtok_r(NULL, ",", &saveptr);
+
+	if ( mode == NULL )
+		return;
+
+	char *fix = strtok_r(NULL, ",", &saveptr);
+
+	if ( fix == NULL )
+		return;
+
+	if ( *fix == '2' || *fix == '3') {
+		gpsInfo->valid = true;
+	}
+	else {
+		gpsInfo->valid = false;
+	}
+
+}
+
 
 /*
 
@@ -395,7 +464,7 @@ Parse the GPGGA message and extract the UTC time, latitude and longitude
 
        UTC Time   Latitude    Longitude
        ---------- ----------- ------------
-$GPGGA,203716.000,3300.2942,N,09711.7508,W,1,6,2.74,161.7,M,-23.8,M,,*64
+$GPGGA,203831.000,3333.2945,N,09744.7542,W,1,6,2.75,163.8,M,-23.8,M,,*6B
 
 */
 
@@ -423,7 +492,7 @@ void parseGGA( char *g, GPSInfo *gpsInfo )
 
 	//printUART( "Time: [%s] %02d:%02d:%02d\r\n", utctime, gpsInfo->hours, gpsInfo->mins, gpsInfo->secs );
 
-	char *lat = strtok_r(NULL, ",", &saveptr);
+	//char *lat = strtok_r(NULL, ",", &saveptr);
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
