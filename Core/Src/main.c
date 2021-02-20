@@ -97,6 +97,8 @@ typedef struct GPSINFO {
 	bool 	valid;
 	Pos 	latitude;
 	Pos 	longitude;
+	int		timeLastDisciplined;
+	bool	disciplined;
 } GPSInfo;
 
 void printUART( const char* format, ...);
@@ -104,7 +106,7 @@ void parseGPS( char *g, GPSInfo* gpsInfo );
 void parseGGA( char *g, GPSInfo* gpsInfo );
 void parseGSA( char *g, GPSInfo* gpsInfo );
 int displayTime( GPSInfo* gpsInfo, int idx );
-
+void disciplineClock( GPSInfo* );
 
 /* USER CODE END 0 */
 
@@ -167,16 +169,18 @@ int main(void)
   int currentIdx = 0;
   int MAX_IDX = 6;
 
-  int tim = HAL_GetTick();
   memset( rbuf, 0, BUF_SIZE );
 
   printUART( "\r\nStarting GPS Receive\r\n\r\n" );
   HAL_UART_Receive_IT(&huart6, (uint8_t *)buf, 1);
 
   GPSInfo	gpsInfo;
+  int tim = HAL_GetTick();
 
   while (1)
   {
+
+	  disciplineClock( &gpsInfo );
 
 	  if ( gpsfound )
 		  parseGPS( gpsdata, &gpsInfo );
@@ -189,60 +193,15 @@ int main(void)
 
 	  HAL_Delay(1);
 
-	  if ( HAL_GetTick() - tim > 1000 )
+	  if ( HAL_GetTick() - tim > 10000 )
 	  {
 		  RTC_TimeTypeDef sTime;
-		  HAL_StatusTypeDef rtcstat = HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
+		  RTC_DateTypeDef sDate;
+		  HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
+		  HAL_RTC_GetDate( &hrtc, &sDate, RTC_FORMAT_BIN);
 
 		  tim = HAL_GetTick();
-
 	  }
-
-
-	  /*
-	  HAL_GPIO_WritePin( GPIOB, GPIO_PIN_2, GPIO_PIN_RESET );
-
-	  for ( int i = 0 ; i < 10 ; i++ ) {
-		  GPIOA->ODR = ( GPIOA->ODR & 0xff00 ) | digits[i];
-		  HAL_Delay(500);
-	  }
-
-	  HAL_GPIO_WritePin( GPIOB, GPIO_PIN_2, GPIO_PIN_SET );
-
-
-	  HAL_GPIO_WritePin( GPIOB, GPIO_PIN_1, GPIO_PIN_RESET );
-	  HAL_Delay(2);
-	  HAL_GPIO_WritePin( GPIOB, GPIO_PIN_1, GPIO_PIN_SET );
-
-	  HAL_GPIO_WritePin( GPIOB, GPIO_PIN_0, GPIO_PIN_RESET );
-	  HAL_Delay(2);
-	  HAL_GPIO_WritePin( GPIOB, GPIO_PIN_0, GPIO_PIN_SET );
-
-	  HAL_GPIO_WritePin( GPIOC, GPIO_PIN_15, GPIO_PIN_RESET );
-	  HAL_Delay(2);
-	  HAL_GPIO_WritePin( GPIOC, GPIO_PIN_15, GPIO_PIN_SET );
-
-	  HAL_GPIO_WritePin( GPIOC, GPIO_PIN_14, GPIO_PIN_RESET );
-	  HAL_Delay(2);
-	  HAL_GPIO_WritePin( GPIOC, GPIO_PIN_14, GPIO_PIN_SET );
-
-
-	  HAL_GPIO_WritePin( GPIOC, GPIO_PIN_13, GPIO_PIN_RESET );
-	  HAL_Delay(2);
-	  HAL_GPIO_WritePin( GPIOC, GPIO_PIN_13, GPIO_PIN_SET );
-
-
-	  flashPin( GPIOA, GPIO_PIN_0);
-	  flashPin( GPIOA, GPIO_PIN_1);
-	  flashPin( GPIOA, GPIO_PIN_2);
-	  flashPin( GPIOA, GPIO_PIN_3);
-	  flashPin( GPIOA, GPIO_PIN_4);
-	  flashPin( GPIOA, GPIO_PIN_5);
-	  flashPin( GPIOA, GPIO_PIN_6);
-	  flashPin( GPIOA, GPIO_PIN_7);
-
-*/
-
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -300,10 +259,33 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 
 
+void disciplineClock( GPSInfo* gpsInfo )
+{
+	  if ( !gpsInfo->disciplined ||
+		   HAL_GetTick() - gpsInfo->timeLastDisciplined > 10000 ) {
+
+		  if ( gpsInfo->valid ) {
+			  RTC_TimeTypeDef sTime;
+			  sTime.Hours = gpsInfo->hours;
+			  sTime.Minutes = gpsInfo->mins;
+			  sTime.Seconds = gpsInfo->secs;
+			  HAL_RTC_SetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
+
+			  gpsInfo->disciplined = true;
+			  gpsInfo->timeLastDisciplined = HAL_GetTick();
+
+			  printUART( "Time Discplined from GPS: %02d:%02d:%02d\r\n", gpsInfo->hours, gpsInfo->mins, gpsInfo->secs );
+
+		  }
+
+	  }
+}
+
 int displayTime( GPSInfo* gpsInfo, int idx )
 {
 
 	int num = gpsInfo->hours * 10000 + gpsInfo->mins * 100 + gpsInfo->secs;
+    //printUART( "%d %d\r\n", num, idx );
 
 	int val = pow( 10, idx+1 );
 	int digit = ( num % val ) / (val/10);
@@ -316,25 +298,27 @@ int displayTime( GPSInfo* gpsInfo, int idx )
 	HAL_GPIO_WritePin( GPIOB, GPIO_PIN_0, GPIO_PIN_SET );
 	HAL_GPIO_WritePin( GPIOC, GPIO_PIN_15, GPIO_PIN_SET );
 	HAL_GPIO_WritePin( GPIOC, GPIO_PIN_14, GPIO_PIN_SET );
-	HAL_GPIO_WritePin( GPIOC, GPIO_PIN_13, GPIO_PIN_SET );
+	HAL_GPIO_WritePin( GPIOB, GPIO_PIN_9, GPIO_PIN_SET );
 
-	if ( idx < 3 )
-		GPIOx = GPIOC;
-	else
-		GPIOx = GPIOB;
-
-	if ( idx == 5 )
+	if ( idx == 5 ) {
 		GPIO_Pin = GPIO_PIN_2;
-	else if ( idx == 4 )
+	    GPIOx = GPIOB;
+	} else if ( idx == 4 ) {
 		GPIO_Pin = GPIO_PIN_1;
-	else if ( idx == 3 )
+		GPIOx = GPIOB;
+	} else if ( idx == 3 ) {
 		GPIO_Pin = GPIO_PIN_0;
-	else if ( idx == 2 )
+		GPIOx = GPIOB;
+	} else if ( idx == 2 ) {
 		GPIO_Pin = GPIO_PIN_15;
-	else if ( idx == 1 )
+		GPIOx = GPIOC;
+	} else if ( idx == 1 ) {
 		GPIO_Pin = GPIO_PIN_14;
-	else if ( idx == 0 )
-		GPIO_Pin = GPIO_PIN_13;
+		GPIOx = GPIOC;
+	} else if ( idx == 0 ) {
+		GPIO_Pin = GPIO_PIN_9;
+	    GPIOx = GPIOB;
+	}
 
 	  HAL_GPIO_WritePin( GPIOx, GPIO_Pin, GPIO_PIN_RESET );
 
@@ -405,7 +389,7 @@ $GPVTG,192.52,T,,M,0.98,N,1.81,K,A*39
  */
 void parseGPS( char *g, GPSInfo* gpsInfo )
 {
-    //printUART( "%s\n", g );
+    printUART( "%s\n", g );
 
     if ( strncmp( "$GPGGA", g, 6 ) == 0 ) {
     	parseGGA( g, gpsInfo );
