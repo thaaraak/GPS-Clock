@@ -265,7 +265,8 @@ void disciplineClock( GPSInfo* gpsInfo )
 		   HAL_GetTick() - gpsInfo->timeLastDisciplined > 10000 ) {
 
 		  if ( gpsInfo->valid ) {
-			  RTC_TimeTypeDef sTime;
+			  RTC_TimeTypeDef sTime = {0};
+
 			  sTime.Hours = gpsInfo->hours;
 			  sTime.Minutes = gpsInfo->mins;
 			  sTime.Seconds = gpsInfo->secs;
@@ -276,6 +277,9 @@ void disciplineClock( GPSInfo* gpsInfo )
 
 			  printUART( "Time Discplined from GPS: %02d:%02d:%02d\r\n", gpsInfo->hours, gpsInfo->mins, gpsInfo->secs );
 
+		  } else {
+			  printUART( "No GPS Time\r\n" );
+
 		  }
 
 	  }
@@ -284,7 +288,13 @@ void disciplineClock( GPSInfo* gpsInfo )
 int displayTime( GPSInfo* gpsInfo, int idx )
 {
 
-	int num = gpsInfo->hours * 10000 + gpsInfo->mins * 100 + gpsInfo->secs;
+	  RTC_TimeTypeDef sTime;
+	  RTC_DateTypeDef sDate;
+	  HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
+	  HAL_RTC_GetDate( &hrtc, &sDate, RTC_FORMAT_BIN);
+
+
+	int num = sTime.Hours * 10000 + sTime.Minutes * 100 + sTime.Seconds;
     //printUART( "%d %d\r\n", num, idx );
 
 	int val = pow( 10, idx+1 );
@@ -389,7 +399,7 @@ $GPVTG,192.52,T,,M,0.98,N,1.81,K,A*39
  */
 void parseGPS( char *g, GPSInfo* gpsInfo )
 {
-    printUART( "%s\n", g );
+//    printUART( "%s\n", g );
 
     if ( strncmp( "$GPGGA", g, 6 ) == 0 ) {
     	parseGGA( g, gpsInfo );
