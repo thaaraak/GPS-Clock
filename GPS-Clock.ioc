@@ -1,6 +1,5 @@
 #MicroXplorer Configuration settings - do not modify
 File.Version=6
-GPIO.groupedBy=Group By Peripherals
 KeepUserPlacement=false
 Mcu.Family=STM32F4
 Mcu.IP0=NVIC
@@ -135,6 +134,8 @@ RCC.VCOI2SOutputFreq_Value=192000000
 RCC.VCOInputFreq_Value=1000000
 RCC.VCOOutputFreq_Value=192000000
 RCC.VcooutputI2S=96000000
+RTC.IPParameters=SynchPrediv
+RTC.SynchPrediv=249
 USART1.IPParameters=VirtualMode
 USART1.VirtualMode=VM_ASYNC
 USART6.BaudRate=9600
