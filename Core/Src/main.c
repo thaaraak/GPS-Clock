@@ -71,6 +71,8 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+// This array holds the settings for switching the segments off/on to display digits
+// from 0-9. Note that a '0' indicates a lit segment as the display is common anode.
 uint8_t digits[10] = {
 		0b00000011,
 		0b10011111,
@@ -97,16 +99,19 @@ typedef struct GPSINFO {
 	bool 	valid;
 	Pos 	latitude;
 	Pos 	longitude;
+	int		timeUpdated;
 	int		timeLastDisciplined;
 	bool	disciplined;
 } GPSInfo;
 
+volatile GPSInfo	gpsInfo = {0};
+
 void printUART( const char* format, ...);
-void parseGPS( char *g, GPSInfo* gpsInfo );
-void parseGGA( char *g, GPSInfo* gpsInfo );
-void parseGSA( char *g, GPSInfo* gpsInfo );
-int displayTime( GPSInfo* gpsInfo, int idx );
-void disciplineClock( GPSInfo* );
+void parseGPS( char *g, volatile GPSInfo* gpsInfo );
+void parseGGA( char *g, volatile GPSInfo* gpsInfo );
+void parseGSA( char *g, volatile GPSInfo* gpsInfo );
+int displayTime( volatile GPSInfo* gpsInfo, int idx );
+void disciplineClock( volatile GPSInfo* );
 
 /* USER CODE END 0 */
 
@@ -174,13 +179,12 @@ int main(void)
   printUART( "\r\nStarting GPS Receive\r\n\r\n" );
   HAL_UART_Receive_IT(&huart6, (uint8_t *)buf, 1);
 
-  GPSInfo	gpsInfo;
-  int tim = HAL_GetTick();
-
   while (1)
   {
 
 	  disciplineClock( &gpsInfo );
+
+	  //setClock();
 
 	  if ( gpsfound )
 		  parseGPS( gpsdata, &gpsInfo );
@@ -193,15 +197,6 @@ int main(void)
 
 	  HAL_Delay(1);
 
-	  if ( HAL_GetTick() - tim > 10000 )
-	  {
-		  RTC_TimeTypeDef sTime;
-		  RTC_DateTypeDef sDate;
-		  HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
-		  HAL_RTC_GetDate( &hrtc, &sDate, RTC_FORMAT_BIN);
-
-		  tim = HAL_GetTick();
-	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -259,12 +254,21 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 
 
-void disciplineClock( GPSInfo* gpsInfo )
+//
+// Discipline the real time clock from GPS. If the clock is not disciplined then
+// do this straight away otherwise perform only once per minute. Not sure whether this is
+// entirely necessary but it seems wrong to update the RTC constantly
+//
+// The GPS info has to be valid (determined by GPGSA returning a valid 2D or 3D fix
+// and not stale - determined by making sure the time the gpsInfo was update is no
+// more than 200 msecs ago
+//
+void disciplineClock( volatile GPSInfo* gpsInfo )
 {
 	  if ( !gpsInfo->disciplined ||
-		   HAL_GetTick() - gpsInfo->timeLastDisciplined > 10000 ) {
+		   HAL_GetTick() - gpsInfo->timeLastDisciplined > 60000 ) {
 
-		  if ( gpsInfo->valid ) {
+		  if ( gpsInfo->valid && HAL_GetTick() - gpsInfo->timeUpdated < 200 ) {
 			  RTC_TimeTypeDef sTime = {0};
 
 			  sTime.Hours = gpsInfo->hours;
@@ -274,25 +278,32 @@ void disciplineClock( GPSInfo* gpsInfo )
 
 			  gpsInfo->disciplined = true;
 			  gpsInfo->timeLastDisciplined = HAL_GetTick();
+			  gpsInfo->valid = false;
 
 			  printUART( "Time Discplined from GPS: %02d:%02d:%02d\r\n", gpsInfo->hours, gpsInfo->mins, gpsInfo->secs );
-
-		  } else {
-			  printUART( "No GPS Time\r\n" );
 
 		  }
 
 	  }
 }
 
-int displayTime( GPSInfo* gpsInfo, int idx )
+int displayTime( volatile GPSInfo* gpsInfo, int idx )
 {
 
-	  RTC_TimeTypeDef sTime;
-	  RTC_DateTypeDef sDate;
-	  HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
-	  HAL_RTC_GetDate( &hrtc, &sDate, RTC_FORMAT_BIN);
+	// Get the time from the real time clock and display it. Note that
+	// according to HAL RTC documentation you have to call  RTC_GetDate after RTC_GetTime
+	// otherwise the structs aren't populated correctly. See note below from the HAL RTC driver
 
+	/*
+	  * @note You must call HAL_RTC_GetDate() after HAL_RTC_GetTime() to unlock the values
+	  *        in the higher-order calendar shadow registers to ensure consistency between the time and date values.
+	  *        Reading RTC current time locks the values in calendar shadow registers until current date is read.
+	*/
+
+	RTC_TimeTypeDef sTime;
+	RTC_DateTypeDef sDate;
+	HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
+	HAL_RTC_GetDate( &hrtc, &sDate, RTC_FORMAT_BIN);
 
 	int num = sTime.Hours * 10000 + sTime.Minutes * 100 + sTime.Seconds;
     //printUART( "%d %d\r\n", num, idx );
@@ -330,21 +341,12 @@ int displayTime( GPSInfo* gpsInfo, int idx )
 	    GPIOx = GPIOB;
 	}
 
-	  HAL_GPIO_WritePin( GPIOx, GPIO_Pin, GPIO_PIN_RESET );
+	HAL_GPIO_WritePin( GPIOx, GPIO_Pin, GPIO_PIN_RESET );
 
-	  GPIOA->ODR = ( GPIOA->ODR & 0xff00 ) | digits[digit];
+	GPIOA->ODR = ( GPIOA->ODR & 0xff00 ) | digits[digit];
 
 
 	return digit;
-
-}
-
-
-void flashPin(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin, GPIO_PinState PinState)
-{
-	  HAL_GPIO_WritePin( GPIOx, GPIO_Pin, GPIO_PIN_RESET );
-	  HAL_Delay(20);
-	  HAL_GPIO_WritePin( GPIOx, GPIO_Pin, GPIO_PIN_SET );
 
 }
 
@@ -397,9 +399,9 @@ $GPVTG,192.52,T,,M,0.98,N,1.81,K,A*39
 
  *
  */
-void parseGPS( char *g, GPSInfo* gpsInfo )
+void parseGPS( char *g, volatile GPSInfo* gpsInfo )
 {
-//    printUART( "%s\n", g );
+    //printUART( "%s\n", g );
 
     if ( strncmp( "$GPGGA", g, 6 ) == 0 ) {
     	parseGGA( g, gpsInfo );
@@ -421,7 +423,7 @@ $GPGSA,A,3,27,30,14,28,07,08,,,,,,,2.90,2.75,0.91*07
 
 */
 
-void parseGSA( char *g, GPSInfo *gpsInfo )
+void parseGSA( char *g, volatile GPSInfo *gpsInfo )
 {
 	char *saveptr, *token;
 
@@ -444,6 +446,7 @@ void parseGSA( char *g, GPSInfo *gpsInfo )
 
 	if ( *fix == '2' || *fix == '3') {
 		gpsInfo->valid = true;
+		gpsInfo->timeUpdated = HAL_GetTick();
 	}
 	else {
 		gpsInfo->valid = false;
@@ -462,7 +465,7 @@ $GPGGA,203831.000,3333.2945,N,09744.7542,W,1,6,2.75,163.8,M,-23.8,M,,*6B
 
 */
 
-void parseGGA( char *g, GPSInfo *gpsInfo )
+void parseGGA( char *g, volatile GPSInfo *gpsInfo )
 {
 	char *saveptr, *token;
 
