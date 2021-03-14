@@ -188,6 +188,8 @@ int main(void)
   max7219.Begin();
   max7219.MAX7219_SetBrightness( '\03');
 
+  int timeLastDisplay = 0;
+
   while (1)
   {
 
@@ -198,13 +200,19 @@ int main(void)
 	  if ( gpsfound )
 		  parseGPS( gpsdata, &gpsInfo );
 
-	  displayTimeSPI( &max7219, &gpsInfo, currentIdx );
+	  if ( HAL_GetTick() - timeLastDisplay > 100 )
+	  {
+		  timeLastDisplay = HAL_GetTick();
+		  displayTimeSPI( &max7219, &gpsInfo, currentIdx );
+	  }
+	  /*
 	  currentIdx++;
 
 	  if ( currentIdx >= MAX_IDX )
 		  currentIdx = 0;
+	  */
 
-	  HAL_Delay(200);
+	 // HAL_Delay(2);
 
 
     /* USER CODE END WHILE */
@@ -276,7 +284,7 @@ void SystemClock_Config(void)
 void disciplineClock( volatile GPSInfo* gpsInfo )
 {
 	  if ( !gpsInfo->disciplined ||
-		   HAL_GetTick() - gpsInfo->timeLastDisciplined > 600000 ) {
+		   HAL_GetTick() - gpsInfo->timeLastDisciplined > 600000 /* 600000 */ ) {
 
 		  if ( gpsInfo->valid && HAL_GetTick() - gpsInfo->timeUpdated < 200 ) {
 			  RTC_TimeTypeDef sTime = {0};
@@ -379,7 +387,7 @@ void displayTimeSPI( MAX7219* max7219, volatile GPSInfo* gpsInfo, int idx )
 	HAL_RTC_GetDate( &hrtc, &sDate, RTC_FORMAT_BIN);
 
 	char tbuf[20];
-	sprintf( tbuf, "%02d%02d%02d", sTime.Hours, sTime.Minutes, sTime.Seconds);
+	sprintf( tbuf, "%02d.%02d.%02d", sTime.Hours, sTime.Minutes, sTime.Seconds);
 	max7219->DisplayText( tbuf, JUSTIFY_RIGHT );
 
 }
@@ -435,7 +443,7 @@ $GPVTG,192.52,T,,M,0.98,N,1.81,K,A*39
  */
 void parseGPS( char *g, volatile GPSInfo* gpsInfo )
 {
-    printUART( "%s\n", g );
+    //printUART( "%s\n", g );
 
     if ( strncmp( "$GPGGA", g, 6 ) == 0 ) {
     	parseGGA( g, gpsInfo );
