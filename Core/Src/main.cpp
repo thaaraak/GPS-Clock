@@ -115,6 +115,7 @@ void parseGSA( char *g, volatile GPSInfo* gpsInfo );
 int displayTime( volatile GPSInfo* gpsInfo, int idx );
 void displayTimeSPI( MAX7219* max7219, volatile GPSInfo* gpsInfo, int idx );
 void disciplineClock( volatile GPSInfo* );
+void setClock();
 
 /* USER CODE END 0 */
 
@@ -171,28 +172,9 @@ int main(void)
   max7219.MAX7219_SetBrightness( '\07');
 
   int timeLastDisplay = HAL_GetTick();
-
-  /*
   int t = HAL_GetTick();
 
-  while (1)
-  {
-	  t = HAL_GetTick();
-
-	  RTC_TimeTypeDef sTime;
-	  RTC_DateTypeDef sDate;
-	  HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
-	  HAL_RTC_GetDate( &hrtc, &sDate, RTC_FORMAT_BIN);
-
-
-	  HAL_Delay(2000);
-	  printUART( "%02d:%02d:%02d\r\n", sTime.Hours, sTime.Minutes, sTime.Seconds);
-
-  }
-*/
-
-  int t = HAL_GetTick();
-
+  //setClock();
 
   while (1)
   {
@@ -210,8 +192,6 @@ int main(void)
 
 	  //printUART( "%d %02d:%02d:%02d\r\n", HAL_GetTick(), sTime.Hours, sTime.Minutes, sTime.Seconds);
 	  //HAL_Delay(2);
-
-
   }
 
 }
@@ -271,6 +251,17 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 
+void setClock()
+{
+	  RTC_TimeTypeDef sTime = {0};
+	  RTC_DateTypeDef sDate = {0};
+
+	  sTime.Hours = 12;
+	  sTime.Minutes = 59;
+	  sTime.Seconds = 50;
+	  HAL_RTC_SetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
+
+}
 
 //
 // Discipline the real time clock from GPS. If the clock is not disciplined then
@@ -287,8 +278,8 @@ void disciplineClock( volatile GPSInfo* gpsInfo )
 		   HAL_GetTick() - gpsInfo->timeLastDisciplined > 6000000 /* 600000 */ ) {
 
 		  if ( gpsInfo->valid && HAL_GetTick() - gpsInfo->timeUpdated < 200 ) {
-			  RTC_TimeTypeDef sTime;
-			  RTC_DateTypeDef sDate;
+			  RTC_TimeTypeDef sTime = {0};
+			  RTC_DateTypeDef sDate = {0};
 			  HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
 			  HAL_RTC_GetDate( &hrtc, &sDate, RTC_FORMAT_BIN);
 
