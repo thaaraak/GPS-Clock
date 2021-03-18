@@ -183,7 +183,7 @@ int main(void)
   int timeLastDisplay = HAL_GetTick();
   RealTimeClock rtc( &hrtc, &Central );
 
-  //setClock( &rtc );
+  setClock( &rtc );
 
   while (1)
   {
@@ -269,7 +269,7 @@ void setClock( RealTimeClock* rtc )
 	  sTime.Minutes = 59;
 	  sTime.Seconds = 50;
 
-	  sDate.Month = 10;
+	  sDate.Month = 3;
 	  sDate.Date = 17;
 	  sDate.Year = 21;
 
