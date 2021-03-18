@@ -99,6 +99,9 @@ typedef struct GPSINFO {
 	int 	hours;
 	int 	mins;
 	int 	secs;
+	int 	day;
+	int 	month;
+	int 	year;
 	bool 	valid;
 	Pos 	latitude;
 	Pos 	longitude;
@@ -126,6 +129,7 @@ void printUART( const char* format, ...);
 void parseGPS( char *g, volatile GPSInfo* gpsInfo );
 void parseGGA( char *g, volatile GPSInfo* gpsInfo );
 void parseGSA( char *g, volatile GPSInfo* gpsInfo );
+void parseRMC( char *g, volatile GPSInfo* gpsInfo );
 void displayTimeSPI( RealTimeClock* rtc, MAX7219* max7219, volatile GPSInfo* gpsInfo );
 void disciplineClock( RealTimeClock* rtc, volatile GPSInfo* );
 void setClock( RealTimeClock* rtc );
@@ -288,7 +292,7 @@ void setClock( RealTimeClock* rtc )
 void disciplineClock( RealTimeClock* rtc, volatile GPSInfo* gpsInfo )
 {
 	  if ( !gpsInfo->disciplined ||
-		   HAL_GetTick() - gpsInfo->timeLastDisciplined > 6000000 /* 600000 */ ) {
+		   HAL_GetTick() - gpsInfo->timeLastDisciplined > 3600000 /* 600000 */ ) {
 
 		  if ( gpsInfo->valid && HAL_GetTick() - gpsInfo->timeUpdated < 200 ) {
 
@@ -301,13 +305,20 @@ void disciplineClock( RealTimeClock* rtc, volatile GPSInfo* gpsInfo )
 			  sTime.Hours = gpsInfo->hours;
 			  sTime.Minutes = gpsInfo->mins;
 			  sTime.Seconds = gpsInfo->secs;
+			  sDate.Date = gpsInfo->day;
+			  sDate.Month = gpsInfo->month;
+			  sDate.Year = gpsInfo->year;
+
 			  rtc->setDateTime( &sTime, &sDate );
 
 			  gpsInfo->disciplined = true;
 			  gpsInfo->timeLastDisciplined = HAL_GetTick();
 			  gpsInfo->valid = false;
 
-			  printUART( "Time Discplined from GPS: %02d:%02d:%02d\r\n\r\n", gpsInfo->hours, gpsInfo->mins, gpsInfo->secs );
+			  printUART( "Time Discplined from GPS: %02d/%02d/%02d %02d:%02d:%02d\r\n\r\n",
+					  gpsInfo->day, gpsInfo->month, gpsInfo->year,
+					  gpsInfo->hours, gpsInfo->mins, gpsInfo->secs
+			  );
 
 		  }
 
@@ -391,11 +402,17 @@ void parseGPS( char *g, volatile GPSInfo* gpsInfo )
 {
     //printUART( "%s\n", g );
 
+	/*
     if ( strncmp( "$GPGGA", g, 6 ) == 0 ) {
     	parseGGA( g, gpsInfo );
     }
+
     else if ( strncmp( "$GPGSA", g, 6 ) == 0 ) {
     	parseGSA( g, gpsInfo );
+    }
+    */
+    if ( strncmp( "$GPRMC", g, 6 ) == 0 ) {
+    	parseRMC( g, gpsInfo );
     }
 
 	gpsfound = false;
@@ -474,6 +491,91 @@ void parseGGA( char *g, volatile GPSInfo *gpsInfo )
 	gpsInfo->hours = tim / 10000;
 	gpsInfo->mins = ( tim - gpsInfo->hours * 10000 ) / 100;
 	gpsInfo->secs = tim % 100;
+
+	//printUART( "Time: [%s] %02d:%02d:%02d\r\n", utctime, gpsInfo->hours, gpsInfo->mins, gpsInfo->secs );
+
+	//char *lat = strtok_r(NULL, ",", &saveptr);
+}
+
+
+/*
+
+Parse the GPRMC message and extract the UTC time and date, latitude and longitude
+
+       UTC Time     Latitude    Longitude                Date
+       ----------   ----------- ------------             ------
+$GPRMC,203831.000,A,3333.2945,N,09744.7542,W,0.98,192.52,170221,,,A*7C
+
+*/
+
+void parseRMC( char *g, volatile GPSInfo *gpsInfo )
+{
+	char *saveptr, *token;
+
+    //printUART( "Found GPRMC\r\n", g );
+
+	token = strtok_r(g, ",", &saveptr);
+
+	if ( token == NULL )
+		return;
+
+	char *utctime = strtok_r(NULL, ",", &saveptr);
+
+	if ( utctime == NULL )
+		return;
+
+	int tim = atoi( utctime );
+
+	gpsInfo->hours = tim / 10000;
+	gpsInfo->mins = ( tim - gpsInfo->hours * 10000 ) / 100;
+	gpsInfo->secs = tim % 100;
+
+	char *mode = strtok_r(NULL, ",", &saveptr);
+	if ( mode == NULL )
+		return;
+
+	if ( *mode == 'A' ) {
+		gpsInfo->valid = true;
+		gpsInfo->timeUpdated = HAL_GetTick();
+	}
+	else {
+		gpsInfo->valid = false;
+	}
+
+	char *latdeg = strtok_r(NULL, ",", &saveptr);
+	if ( latdeg == NULL )
+		return;
+
+	char *lat = strtok_r(NULL, ",", &saveptr);
+	if ( lat == NULL )
+		return;
+
+	char *longdeg = strtok_r(NULL, ",", &saveptr);
+	if ( latdeg == NULL )
+		return;
+
+	char *longdir = strtok_r(NULL, ",", &saveptr);
+	if ( longdir == NULL )
+		return;
+
+	char *speed = strtok_r(NULL, ",", &saveptr);
+	if ( speed == NULL )
+		return;
+
+	char *track = strtok_r(NULL, ",", &saveptr);
+	if ( track == NULL )
+		return;
+
+	char *date = strtok_r(NULL, ",", &saveptr);
+	if ( date == NULL )
+		return;
+
+	int dt = atoi( date );
+
+	gpsInfo->day = dt / 10000;
+	gpsInfo->month = ( dt - gpsInfo->day * 10000 ) / 100;
+	gpsInfo->year = dt % 100;
+
 
 	//printUART( "Time: [%s] %02d:%02d:%02d\r\n", utctime, gpsInfo->hours, gpsInfo->mins, gpsInfo->secs );
 
