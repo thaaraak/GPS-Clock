@@ -52,6 +52,8 @@ typedef struct  {
   uint8_t Year;   // offset from 1970; 
 } 	tmElements_t, TimeElements, *tmElementsPtr_t;
 
+static  const uint8_t monthDays[]={31,28,31,30,31,30,31,31,30,31,30,31}; // API starts months from 1, this array starts from 0
+
 //convenience macros to convert to and from tm years 
 #define  tmYearToCalendar(Y) ((Y) + 1970)  // full four digit year 
 #define  CalendarYrToTm(Y)   ((Y) - 1970)
@@ -72,6 +74,8 @@ typedef time_t(*getExternalTime)();
 #define SECS_PER_YEAR ((time_t)(SECS_PER_DAY * 365UL)) // TODO: ought to handle leap years
 #define SECS_YR_2000  ((time_t)(946684800UL)) // the time at the start of y2k
  
+#define LEAP_YEAR(Y)     ( ((1970+(Y))>0) && !((1970+(Y))%4) && ( ((1970+(Y))%100) || !((1970+(Y))%400) ) )
+
 /* Useful Macros for getting elapsed time */
 #define numberOfSeconds(_time_) ((_time_) % SECS_PER_MIN)  
 #define numberOfMinutes(_time_) (((_time_) / SECS_PER_MIN) % SECS_PER_MIN) 

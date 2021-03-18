@@ -33,6 +33,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
+#include "RealTimeClock.h"
 
 /* USER CODE END Includes */
 
@@ -106,16 +107,28 @@ typedef struct GPSINFO {
 	bool	disciplined;
 } GPSInfo;
 
+TimeChangeRule EDT = { "EDT", Second, Sun, Mar, 2, -240 };    //Daylight time = UTC - 4 hours
+TimeChangeRule EST = { "EST", First, Sun, Nov, 2, -300 };     //Standard time = UTC - 5 hours
+Timezone Eastern(EDT, EST);
+TimeChangeRule CDT = { "CDT", Second, Sun, Mar, 2, -300 };    //Daylight time = UTC - 5 hours
+TimeChangeRule CST = { "CST", First, Sun, Nov, 2, -360 };     //Standard time = UTC - 6 hours
+Timezone Central(CDT, CST);
+TimeChangeRule MDT = { "MDT", Second, Sun, Mar, 2, -360 };    //Daylight time = UTC - 6 hours
+TimeChangeRule MST = { "MST", First, Sun, Nov, 2, -420 };     //Standard time = UTC - 7 hours
+Timezone Mountain(MDT, MST);
+TimeChangeRule PDT = { "PDT", Second, Sun, Mar, 2, -420 };    //Daylight time = UTC - 7 hours
+TimeChangeRule PST = { "PST", First, Sun, Nov, 2, -480 };     //Standard time = UTC - 8 hours
+Timezone Pacific(PDT, PST);
+
 volatile GPSInfo	gpsInfo = {0};
 
 void printUART( const char* format, ...);
 void parseGPS( char *g, volatile GPSInfo* gpsInfo );
 void parseGGA( char *g, volatile GPSInfo* gpsInfo );
 void parseGSA( char *g, volatile GPSInfo* gpsInfo );
-int displayTime( volatile GPSInfo* gpsInfo, int idx );
-void displayTimeSPI( MAX7219* max7219, volatile GPSInfo* gpsInfo, int idx );
-void disciplineClock( volatile GPSInfo* );
-void setClock();
+void displayTimeSPI( RealTimeClock* rtc, MAX7219* max7219, volatile GPSInfo* gpsInfo );
+void disciplineClock( RealTimeClock* rtc, volatile GPSInfo* );
+void setClock( RealTimeClock* rtc );
 
 /* USER CODE END 0 */
 
@@ -158,10 +171,6 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-
-  int currentIdx = 0;
-  int MAX_IDX = 6;
-
   memset( rbuf, 0, BUF_SIZE );
 
   printUART( "\r\nStarting GPS Receive\r\n\r\n" );
@@ -172,14 +181,14 @@ int main(void)
   max7219.MAX7219_SetBrightness( '\07');
 
   int timeLastDisplay = HAL_GetTick();
-  int t = HAL_GetTick();
+  RealTimeClock rtc( &hrtc, &Central );
 
-  //setClock();
+  //setClock( &rtc );
 
   while (1)
   {
 
-	  disciplineClock( &gpsInfo );
+	  disciplineClock( &rtc, &gpsInfo );
 
 	  if ( gpsfound )
 		  parseGPS( gpsdata, &gpsInfo );
@@ -187,7 +196,7 @@ int main(void)
 	  if ( HAL_GetTick() - timeLastDisplay > 100 )
 	  {
 		  timeLastDisplay = HAL_GetTick();
-		  displayTimeSPI( &max7219, &gpsInfo, currentIdx );
+		  displayTimeSPI( &rtc, &max7219, &gpsInfo );
 	  }
 
 	  //printUART( "%d %02d:%02d:%02d\r\n", HAL_GetTick(), sTime.Hours, sTime.Minutes, sTime.Seconds);
@@ -251,7 +260,7 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 
-void setClock()
+void setClock( RealTimeClock* rtc )
 {
 	  RTC_TimeTypeDef sTime = {0};
 	  RTC_DateTypeDef sDate = {0};
@@ -259,8 +268,12 @@ void setClock()
 	  sTime.Hours = 12;
 	  sTime.Minutes = 59;
 	  sTime.Seconds = 50;
-	  HAL_RTC_SetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
 
+	  sDate.Month = 10;
+	  sDate.Date = 17;
+	  sDate.Year = 21;
+
+	  rtc->setDateTime(&sTime, &sDate);
 }
 
 //
@@ -272,23 +285,23 @@ void setClock()
 // and not stale - determined by making sure the time the gpsInfo was update is no
 // more than 200 msecs ago
 //
-void disciplineClock( volatile GPSInfo* gpsInfo )
+void disciplineClock( RealTimeClock* rtc, volatile GPSInfo* gpsInfo )
 {
 	  if ( !gpsInfo->disciplined ||
 		   HAL_GetTick() - gpsInfo->timeLastDisciplined > 6000000 /* 600000 */ ) {
 
 		  if ( gpsInfo->valid && HAL_GetTick() - gpsInfo->timeUpdated < 200 ) {
+
 			  RTC_TimeTypeDef sTime = {0};
 			  RTC_DateTypeDef sDate = {0};
-			  HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
-			  HAL_RTC_GetDate( &hrtc, &sDate, RTC_FORMAT_BIN);
+			  rtc->getDateTime( &sTime, &sDate );
 
 			  printUART( "Old Time: %02d:%02d:%02d\r\n", sTime.Hours, sTime.Minutes, sTime.Seconds );
 
 			  sTime.Hours = gpsInfo->hours;
 			  sTime.Minutes = gpsInfo->mins;
 			  sTime.Seconds = gpsInfo->secs;
-			  HAL_RTC_SetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
+			  rtc->setDateTime( &sTime, &sDate );
 
 			  gpsInfo->disciplined = true;
 			  gpsInfo->timeLastDisciplined = HAL_GetTick();
@@ -301,7 +314,8 @@ void disciplineClock( volatile GPSInfo* gpsInfo )
 	  }
 }
 
-int displayTime( volatile GPSInfo* gpsInfo, int idx )
+
+void displayTimeSPI( RealTimeClock* rtc, MAX7219* max7219, volatile GPSInfo* gpsInfo )
 {
 
 	// Get the time from the real time clock and display it. Note that
@@ -316,71 +330,7 @@ int displayTime( volatile GPSInfo* gpsInfo, int idx )
 
 	RTC_TimeTypeDef sTime;
 	RTC_DateTypeDef sDate;
-	HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
-	HAL_RTC_GetDate( &hrtc, &sDate, RTC_FORMAT_BIN);
-
-	int num = sTime.Hours * 10000 + sTime.Minutes * 100 + sTime.Seconds;
-    //printUART( "%d %d\r\n", num, idx );
-
-	int val = pow( 10, idx+1 );
-	int digit = ( num % val ) / (val/10);
-
-	GPIO_TypeDef* GPIOx;
-	uint16_t GPIO_Pin;
-
-	HAL_GPIO_WritePin( GPIOB, GPIO_PIN_2, GPIO_PIN_SET );
-	HAL_GPIO_WritePin( GPIOB, GPIO_PIN_1, GPIO_PIN_SET );
-	HAL_GPIO_WritePin( GPIOB, GPIO_PIN_0, GPIO_PIN_SET );
-	HAL_GPIO_WritePin( GPIOC, GPIO_PIN_15, GPIO_PIN_SET );
-	HAL_GPIO_WritePin( GPIOC, GPIO_PIN_14, GPIO_PIN_SET );
-	HAL_GPIO_WritePin( GPIOB, GPIO_PIN_9, GPIO_PIN_SET );
-
-	if ( idx == 5 ) {
-		GPIO_Pin = GPIO_PIN_2;
-	    GPIOx = GPIOB;
-	} else if ( idx == 4 ) {
-		GPIO_Pin = GPIO_PIN_1;
-		GPIOx = GPIOB;
-	} else if ( idx == 3 ) {
-		GPIO_Pin = GPIO_PIN_0;
-		GPIOx = GPIOB;
-	} else if ( idx == 2 ) {
-		GPIO_Pin = GPIO_PIN_15;
-		GPIOx = GPIOC;
-	} else if ( idx == 1 ) {
-		GPIO_Pin = GPIO_PIN_14;
-		GPIOx = GPIOC;
-	} else if ( idx == 0 ) {
-		GPIO_Pin = GPIO_PIN_9;
-	    GPIOx = GPIOB;
-	}
-
-	HAL_GPIO_WritePin( GPIOx, GPIO_Pin, GPIO_PIN_RESET );
-
-	GPIOA->ODR = ( GPIOA->ODR & 0xff00 ) | digits[digit];
-
-
-	return digit;
-
-}
-
-void displayTimeSPI( MAX7219* max7219, volatile GPSInfo* gpsInfo, int idx )
-{
-
-	// Get the time from the real time clock and display it. Note that
-	// according to HAL RTC documentation you have to call  RTC_GetDate after RTC_GetTime
-	// otherwise the structs aren't populated correctly. See note below from the HAL RTC driver
-
-	/*
-	  * @note You must call HAL_RTC_GetDate() after HAL_RTC_GetTime() to unlock the values
-	  *        in the higher-order calendar shadow registers to ensure consistency between the time and date values.
-	  *        Reading RTC current time locks the values in calendar shadow registers until current date is read.
-	*/
-
-	RTC_TimeTypeDef sTime;
-	RTC_DateTypeDef sDate;
-	HAL_RTC_GetTime( &hrtc, &sTime, RTC_FORMAT_BIN);
-	HAL_RTC_GetDate( &hrtc, &sDate, RTC_FORMAT_BIN);
+	rtc->getDateTime( &sTime, &sDate );
 
 	char tbuf[20];
 	sprintf( tbuf, "%02d.%02d.%02d", sTime.Hours, sTime.Minutes, sTime.Seconds);

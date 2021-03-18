@@ -27,17 +27,6 @@ Timezone::Timezone(TimeChangeRule stdTime)
         initTimeChanges();
 }
 
-#ifdef __AVR__
-/*----------------------------------------------------------------------*
- * Create a Timezone object from time change rules stored in EEPROM     *
- * at the given address.                                                *
- *----------------------------------------------------------------------*/
-Timezone::Timezone(int address)
-{
-    readRules(address);
-}
-#endif
-
 /*----------------------------------------------------------------------*
  * Convert the given UTC time to local time, standard or                *
  * daylight time, as appropriate.                                       *
