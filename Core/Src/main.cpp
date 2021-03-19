@@ -300,7 +300,10 @@ void disciplineClock( RealTimeClock* rtc, volatile GPSInfo* gpsInfo )
 			  RTC_DateTypeDef sDate = {0};
 			  rtc->getDateTime( &sTime, &sDate );
 
-			  printUART( "Old Time: %02d:%02d:%02d\r\n", sTime.Hours, sTime.Minutes, sTime.Seconds );
+			  printUART( "Current Date/Time: %02d/%02d/%02d %02d:%02d:%02d\r\n",
+					  sDate.Date, sDate.Month, sDate.Year,
+					  sTime.Hours, sTime.Minutes, sTime.Seconds
+			  );
 
 			  sTime.Hours = gpsInfo->hours;
 			  sTime.Minutes = gpsInfo->mins;
@@ -315,9 +318,9 @@ void disciplineClock( RealTimeClock* rtc, volatile GPSInfo* gpsInfo )
 			  gpsInfo->timeLastDisciplined = HAL_GetTick();
 			  gpsInfo->valid = false;
 
-			  printUART( "Time Discplined from GPS: %02d/%02d/%02d %02d:%02d:%02d\r\n\r\n",
-					  gpsInfo->day, gpsInfo->month, gpsInfo->year,
-					  gpsInfo->hours, gpsInfo->mins, gpsInfo->secs
+			  printUART( "Date/Time Discplined from GPS: %02d/%02d/%02d %02d:%02d:%02d\r\n\r\n",
+					  sDate.Date, sDate.Month, sDate.Year,
+					  sTime.Hours, sTime.Minutes, sTime.Seconds
 			  );
 
 		  }
@@ -512,7 +515,7 @@ void parseRMC( char *g, volatile GPSInfo *gpsInfo )
 {
 	char *saveptr, *token;
 
-    //printUART( "Found GPRMC\r\n", g );
+    //printUART( "Found GPRMC: %s\r\n", g );
 
 	token = strtok_r(g, ",", &saveptr);
 
@@ -577,7 +580,7 @@ void parseRMC( char *g, volatile GPSInfo *gpsInfo )
 	gpsInfo->year = dt % 100;
 
 
-	//printUART( "Time: [%s] %02d:%02d:%02d\r\n", utctime, gpsInfo->hours, gpsInfo->mins, gpsInfo->secs );
+	//printUART( "Date: %02d:%02d:%02d\r\n", gpsInfo->day, gpsInfo->month, gpsInfo->year );
 
 	//char *lat = strtok_r(NULL, ",", &saveptr);
 }

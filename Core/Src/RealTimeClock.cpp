@@ -63,6 +63,6 @@ void RealTimeClock::fromTimeT( time_t t, RTC_TimeTypeDef* sTime, RTC_DateTypeDef
 	  sTime->Seconds = tm.Second;
 	  sDate->Date = tm.Day;
 	  sDate->Month = tm.Month;
-	  sDate->Year = tm.Year - 2000;
+	  sDate->Year = tm.Year - 30;
 
 }
