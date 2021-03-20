@@ -107,8 +107,23 @@ int main(void)
   HAL_Delay( 1000 );
   write(0x0F, 0x00);
 
+
   while (1)
   {
+	  write( 1, 0b11111111 );
+	  write( 2, 0b11111111 );
+
+	  for ( int i = 0 ; i < 16 ; i++ ) {
+		  write( 0x0a, i );
+		  HAL_Delay(50);
+	  }
+
+	  for ( int i = 15 ; i >= 0 ; i-- ) {
+		  write( 0x0a, i );
+		  HAL_Delay(50);
+	  }
+
+	  /*
 
 	  for ( int i = 0 ; i < 8 ; i++ ) {
 		  write( i+1, 0x00 );
@@ -123,11 +138,14 @@ int main(void)
 		  }
 
 	  HAL_Delay(500);
+	  */
 
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
+
+
   /* USER CODE END 3 */
 }
 

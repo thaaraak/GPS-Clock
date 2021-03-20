@@ -33,6 +33,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
+#include "zstrtok.h"
 #include "RealTimeClock.h"
 
 /* USER CODE END Includes */
@@ -185,7 +186,7 @@ int main(void)
   max7219.MAX7219_SetBrightness( '\07');
 
   int timeLastDisplay = HAL_GetTick();
-  RealTimeClock rtc( &hrtc, &Central );
+  RealTimeClock rtc( &hrtc, &Pacific );
 
   //setClock( &rtc );
 
@@ -433,21 +434,21 @@ $GPGSA,A,3,27,30,14,28,07,08,,,,,,,2.90,2.75,0.91*07
 
 void parseGSA( char *g, volatile GPSInfo *gpsInfo )
 {
-	char *saveptr, *token;
+	char *token;
 
     //printUART( "Found GPGSA\r\n", g );
 
-	token = strtok_r(g, ",", &saveptr);
+	token = zstrtok(g, ",");
 
 	if ( token == NULL )
 		return;
 
-	char *mode = strtok_r(NULL, ",", &saveptr);
+	char *mode = zstrtok(NULL, ",");
 
 	if ( mode == NULL )
 		return;
 
-	char *fix = strtok_r(NULL, ",", &saveptr);
+	char *fix = zstrtok(NULL, ",");
 
 	if ( fix == NULL )
 		return;
@@ -475,16 +476,16 @@ $GPGGA,203831.000,3333.2945,N,09744.7542,W,1,6,2.75,163.8,M,-23.8,M,,*6B
 
 void parseGGA( char *g, volatile GPSInfo *gpsInfo )
 {
-	char *saveptr, *token;
+	char *token;
 
     //printUART( "Found GPGGA\r\n", g );
 
-	token = strtok_r(g, ",", &saveptr);
+	token = zstrtok(g, ",");
 
 	if ( token == NULL )
 		return;
 
-	char *utctime = strtok_r(NULL, ",", &saveptr);
+	char *utctime = zstrtok(NULL, ",");
 
 	if ( utctime == NULL )
 		return;
@@ -497,7 +498,7 @@ void parseGGA( char *g, volatile GPSInfo *gpsInfo )
 
 	//printUART( "Time: [%d] %02d:%02d:%02d\r\n", tim, gpsInfo->hours, gpsInfo->mins, gpsInfo->secs );
 
-	//char *lat = strtok_r(NULL, ",", &saveptr);
+	//char *lat = zstrtok(NULL, ",");
 }
 
 
@@ -514,16 +515,18 @@ $GPRMC,230114.00,A,3300.30830,N,09711.75273,W,0.738,,190321,,,A*61
 
 void parseRMC( char *g, volatile GPSInfo *gpsInfo )
 {
-	char *saveptr, *token;
+	char *token;
+	char save[256];
 
+	strcpy( save, g );
     //printUART( "Found GPRMC: %s\r\n", g );
 
-	token = strtok_r(g, ",", &saveptr);
+	token = zstrtok(g, ",");
 
 	if ( token == NULL )
 		return;
 
-	char *utctime = strtok_r(NULL, ",", &saveptr);
+	char *utctime = zstrtok(NULL, ",");
 
 	if ( utctime == NULL )
 		return;
@@ -534,7 +537,7 @@ void parseRMC( char *g, volatile GPSInfo *gpsInfo )
 	gpsInfo->mins = ( tim - gpsInfo->hours * 10000 ) / 100;
 	gpsInfo->secs = tim % 100;
 
-	char *mode = strtok_r(NULL, ",", &saveptr);
+	char *mode = zstrtok(NULL, ",");
 	if ( mode == NULL )
 		return;
 
@@ -546,31 +549,31 @@ void parseRMC( char *g, volatile GPSInfo *gpsInfo )
 		gpsInfo->valid = false;
 	}
 
-	char *latdeg = strtok_r(NULL, ",", &saveptr);
+	char *latdeg = zstrtok(NULL, ",");
 	if ( latdeg == NULL )
 		return;
 
-	char *lat = strtok_r(NULL, ",", &saveptr);
+	char *lat = zstrtok(NULL, ",");
 	if ( lat == NULL )
 		return;
 
-	char *longdeg = strtok_r(NULL, ",", &saveptr);
-	if ( latdeg == NULL )
+	char *longdeg = zstrtok(NULL, ",");
+	if ( longdeg == NULL )
 		return;
 
-	char *longdir = strtok_r(NULL, ",", &saveptr);
+	char *longdir = zstrtok(NULL, ",");
 	if ( longdir == NULL )
 		return;
 
-	char *speed = strtok_r(NULL, ",", &saveptr);
+	char *speed = zstrtok(NULL, ",");
 	if ( speed == NULL )
 		return;
-/*
-	char *track = strtok_r(NULL, ",", &saveptr);
+
+	char *track = zstrtok(NULL, ",");
 	if ( track == NULL )
 		return;
-*/
-	char *date = strtok_r(NULL, ",", &saveptr);
+
+	char *date = zstrtok(NULL, ",");
 	if ( date == NULL )
 		return;
 
@@ -580,10 +583,12 @@ void parseRMC( char *g, volatile GPSInfo *gpsInfo )
 	gpsInfo->month = ( dt - gpsInfo->day * 10000 ) / 100;
 	gpsInfo->year = dt % 100;
 
+	if ( gpsInfo->year != 21 )
+	    printUART( "******* Error GPRMC: %s\r\n", save );
 
 	//printUART( "Date: [%d] %02d:%02d:%02d\r\n", dt, gpsInfo->day, gpsInfo->month, gpsInfo->year );
 
-	//char *lat = strtok_r(NULL, ",", &saveptr);
+	//char *lat = zstrtok(NULL, ",");
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
