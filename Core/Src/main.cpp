@@ -177,7 +177,7 @@ int main(void)
 
   memset( rbuf, 0, BUF_SIZE );
 
-  printUART( "\r\nStarting GPS Receive\r\n\r\n" );
+  printUART( "\r\nStarting GPS\r\n\r\n" );
   HAL_UART_Receive_IT(&huart6, (uint8_t *)buf, 1);
 
   MAX7219 max7219( &hspi1, GPIOB, GPIO_PIN_4 );
@@ -187,7 +187,7 @@ int main(void)
   int timeLastDisplay = HAL_GetTick();
   RealTimeClock rtc( &hrtc, &Central );
 
-  setClock( &rtc );
+  //setClock( &rtc );
 
   while (1)
   {
@@ -347,7 +347,7 @@ void displayTimeSPI( RealTimeClock* rtc, MAX7219* max7219, volatile GPSInfo* gps
 	rtc->getDateTime( &sTime, &sDate );
 
 	char tbuf[20];
-	sprintf( tbuf, "%02d.%02d.%02d", sTime.Hours, sTime.Minutes, sTime.Seconds);
+	sprintf( tbuf, "%02d-%02d-%02d", sTime.Hours, sTime.Minutes, sTime.Seconds);
 	max7219->DisplayText( tbuf, JUSTIFY_RIGHT );
 
 }
@@ -495,7 +495,7 @@ void parseGGA( char *g, volatile GPSInfo *gpsInfo )
 	gpsInfo->mins = ( tim - gpsInfo->hours * 10000 ) / 100;
 	gpsInfo->secs = tim % 100;
 
-	//printUART( "Time: [%s] %02d:%02d:%02d\r\n", utctime, gpsInfo->hours, gpsInfo->mins, gpsInfo->secs );
+	//printUART( "Time: [%d] %02d:%02d:%02d\r\n", tim, gpsInfo->hours, gpsInfo->mins, gpsInfo->secs );
 
 	//char *lat = strtok_r(NULL, ",", &saveptr);
 }
@@ -508,6 +508,7 @@ Parse the GPRMC message and extract the UTC time and date, latitude and longitud
        UTC Time     Latitude    Longitude                Date
        ----------   ----------- ------------             ------
 $GPRMC,203831.000,A,3333.2945,N,09744.7542,W,0.98,192.52,170221,,,A*7C
+$GPRMC,230114.00,A,3300.30830,N,09711.75273,W,0.738,,190321,,,A*61
 
 */
 
@@ -564,11 +565,11 @@ void parseRMC( char *g, volatile GPSInfo *gpsInfo )
 	char *speed = strtok_r(NULL, ",", &saveptr);
 	if ( speed == NULL )
 		return;
-
+/*
 	char *track = strtok_r(NULL, ",", &saveptr);
 	if ( track == NULL )
 		return;
-
+*/
 	char *date = strtok_r(NULL, ",", &saveptr);
 	if ( date == NULL )
 		return;
@@ -580,7 +581,7 @@ void parseRMC( char *g, volatile GPSInfo *gpsInfo )
 	gpsInfo->year = dt % 100;
 
 
-	//printUART( "Date: %02d:%02d:%02d\r\n", gpsInfo->day, gpsInfo->month, gpsInfo->year );
+	//printUART( "Date: [%d] %02d:%02d:%02d\r\n", dt, gpsInfo->day, gpsInfo->month, gpsInfo->year );
 
 	//char *lat = strtok_r(NULL, ",", &saveptr);
 }
