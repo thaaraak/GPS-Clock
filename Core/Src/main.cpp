@@ -186,7 +186,7 @@ int main(void)
   max7219.MAX7219_SetBrightness( '\07');
 
   int timeLastDisplay = HAL_GetTick();
-  RealTimeClock rtc( &hrtc, &Pacific );
+  RealTimeClock rtc( &hrtc, &Central );
 
   //setClock( &rtc );
 
