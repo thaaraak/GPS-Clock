@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include "zstrtok.h"
 #include "RealTimeClock.h"
+#include "Bounce2.h"
 
 /* USER CODE END Includes */
 
@@ -124,6 +125,26 @@ TimeChangeRule PDT = { "PDT", Second, Sun, Mar, 2, -420 };    //Daylight time = 
 TimeChangeRule PST = { "PST", First, Sun, Nov, 2, -480 };     //Standard time = UTC - 8 hours
 Timezone Pacific(PDT, PST);
 
+enum ClockModes {
+    DisplayTime, DisplayDate, DisplayAlarm
+};
+
+enum DateDisplayModes {
+    DDMMYY, MMDDYY
+};
+
+enum TimeDisplayModes {
+    HR24, HR12
+};
+
+Bounce	mode;
+Bounce	up;
+Bounce	down;
+
+ClockModes			clockMode = DisplayTime;
+DateDisplayModes	dateDisplayMode = DDMMYY;
+TimeDisplayModes	timeDisplayMode = HR24;
+
 volatile GPSInfo	gpsInfo = {0};
 
 void printUART( const char* format, ...);
@@ -131,7 +152,13 @@ void parseGPS( char *g, volatile GPSInfo* gpsInfo );
 void parseGGA( char *g, volatile GPSInfo* gpsInfo );
 void parseGSA( char *g, volatile GPSInfo* gpsInfo );
 void parseRMC( char *g, volatile GPSInfo* gpsInfo );
+
+void processMode();
+void processUp();
+void processDown();
+
 void displayTimeSPI( RealTimeClock* rtc, MAX7219* max7219, volatile GPSInfo* gpsInfo );
+void displayDateSPI( RealTimeClock* rtc, MAX7219* max7219, volatile GPSInfo* gpsInfo );
 void disciplineClock( RealTimeClock* rtc, volatile GPSInfo* );
 void setClock( RealTimeClock* rtc );
 
@@ -181,6 +208,13 @@ int main(void)
   printUART( "\r\nStarting GPS\r\n\r\n" );
   HAL_UART_Receive_IT(&huart6, (uint8_t *)buf, 1);
 
+  mode.attach( MODE_GPIO_Port, MODE_Pin );
+  mode.interval(20);
+  up.attach( UP_GPIO_Port, UP_Pin );
+  up.interval(20);
+  down.attach( DOWN_GPIO_Port, DOWN_Pin );
+  down.interval(20);
+
   MAX7219 max7219( &hspi1, GPIOB, GPIO_PIN_4 );
   max7219.Begin();
   max7219.MAX7219_SetBrightness( '\07');
@@ -193,15 +227,37 @@ int main(void)
   while (1)
   {
 
+	  if ( mode.update() )
+		  processMode();
+
+	  if ( up.update() && up.read() == 0 )
+		  processUp();
+
+	  if ( down.update() && down.read() == 0 )
+		  processDown();
+
 	  disciplineClock( &rtc, &gpsInfo );
 
 	  if ( gpsfound )
 		  parseGPS( gpsdata, &gpsInfo );
 
-	  if ( HAL_GetTick() - timeLastDisplay > 100 )
+	  if (clockMode == DisplayTime )
 	  {
-		  timeLastDisplay = HAL_GetTick();
-		  displayTimeSPI( &rtc, &max7219, &gpsInfo );
+		  if ( HAL_GetTick() - timeLastDisplay > 100 )
+		  {
+			  timeLastDisplay = HAL_GetTick();
+			  displayTimeSPI( &rtc, &max7219, &gpsInfo );
+		  }
+	  }
+
+	  else if ( clockMode == DisplayDate )
+	  {
+		  if ( HAL_GetTick() - timeLastDisplay > 100 )
+		  {
+			  timeLastDisplay = HAL_GetTick();
+			  displayDateSPI( &rtc, &max7219, &gpsInfo );
+		  }
+
 	  }
 
 	  //printUART( "%d %02d:%02d:%02d\r\n", HAL_GetTick(), sTime.Hours, sTime.Minutes, sTime.Seconds);
@@ -264,6 +320,46 @@ void SystemClock_Config(void)
 
 
 /* USER CODE BEGIN 4 */
+
+void processMode()
+{
+	if ( mode.read() == 0 )
+	{
+		if ( clockMode == DisplayDate )
+			clockMode = DisplayTime;
+		else if ( clockMode == DisplayTime )
+			clockMode = DisplayDate;
+	}
+}
+
+
+void processUp()
+{
+	if ( clockMode == DisplayDate )
+	{
+		if ( dateDisplayMode == DDMMYY )
+			dateDisplayMode = MMDDYY;
+		else
+			dateDisplayMode = DDMMYY;
+	}
+
+	else if ( clockMode == DisplayTime )
+	{
+		if ( timeDisplayMode == HR12 )
+			timeDisplayMode = HR24;
+		else
+			timeDisplayMode = HR12;
+	}
+}
+
+void processDown()
+{
+	if ( clockMode == DisplayDate )
+		processUp();
+	else if ( clockMode == DisplayTime )
+		processUp();
+}
+
 
 void setClock( RealTimeClock* rtc )
 {
@@ -348,7 +444,33 @@ void displayTimeSPI( RealTimeClock* rtc, MAX7219* max7219, volatile GPSInfo* gps
 	rtc->getDateTime( &sTime, &sDate );
 
 	char tbuf[20];
-	sprintf( tbuf, "%02d-%02d-%02d", sTime.Hours, sTime.Minutes, sTime.Seconds);
+
+	if ( timeDisplayMode == HR24 )
+		sprintf( tbuf, "%02d-%02d-%02d",
+				sTime.Hours, sTime.Minutes, sTime.Seconds);
+	else
+		sprintf( tbuf, "%2d.%02d.%02d %c",
+				sTime.Hours % 12, sTime.Minutes, sTime.Seconds,
+				sTime.Hours >= 12 ? 'P' : 'A' );
+
+	max7219->DisplayText( tbuf, JUSTIFY_RIGHT );
+
+}
+
+void displayDateSPI( RealTimeClock* rtc, MAX7219* max7219, volatile GPSInfo* gpsInfo )
+{
+
+	RTC_TimeTypeDef sTime;
+	RTC_DateTypeDef sDate;
+	rtc->getDateTime( &sTime, &sDate );
+
+	char tbuf[20];
+
+	if ( dateDisplayMode == DDMMYY )
+		sprintf( tbuf, "%02d-%02d-%02d", sDate.Date, sDate.Month, sDate.Year);
+	else
+		sprintf( tbuf, "%02d-%02d-%02d", sDate.Month, sDate.Date, sDate.Year);
+
 	max7219->DisplayText( tbuf, JUSTIFY_RIGHT );
 
 }
