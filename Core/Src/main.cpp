@@ -445,13 +445,21 @@ void displayTimeSPI( RealTimeClock* rtc, MAX7219* max7219, volatile GPSInfo* gps
 
 	char tbuf[20];
 
+	/*
+	if ( ( HAL_GetTick() / 300 % 2) == 0 )
+	{
+		sprintf( tbuf, "        " );
+	}
+	else
+	{
+*/
 	if ( timeDisplayMode == HR24 )
 		sprintf( tbuf, "%02d-%02d-%02d",
-				sTime.Hours, sTime.Minutes, sTime.Seconds);
+					sTime.Hours, sTime.Minutes, sTime.Seconds);
 	else
 		sprintf( tbuf, "%2d.%02d.%02d %c",
-				sTime.Hours % 12, sTime.Minutes, sTime.Seconds,
-				sTime.Hours >= 12 ? 'P' : 'A' );
+					sTime.Hours > 12 ? sTime.Hours-12 : sTime.Hours, sTime.Minutes, sTime.Seconds,
+					sTime.Hours >= 12 ? 'P' : 'A' );
 
 	max7219->DisplayText( tbuf, JUSTIFY_RIGHT );
 
@@ -631,7 +639,7 @@ Parse the GPRMC message and extract the UTC time and date, latitude and longitud
        UTC Time     Latitude    Longitude                Date
        ----------   ----------- ------------             ------
 $GPRMC,203831.000,A,3333.2945,N,09744.7542,W,0.98,192.52,170221,,,A*7C
-$GPRMC,230114.00,A,3300.30830,N,09711.75273,W,0.738,,190321,,,A*61
+$GPRMC,230114.00,A,3333.30830,N,09744.75273,W,0.738,,190321,,,A*61
 
 */
 
@@ -704,9 +712,6 @@ void parseRMC( char *g, volatile GPSInfo *gpsInfo )
 	gpsInfo->day = dt / 10000;
 	gpsInfo->month = ( dt - gpsInfo->day * 10000 ) / 100;
 	gpsInfo->year = dt % 100;
-
-	if ( gpsInfo->year != 21 )
-	    printUART( "******* Error GPRMC: %s\r\n", save );
 
 	//printUART( "Date: [%d] %02d:%02d:%02d\r\n", dt, gpsInfo->day, gpsInfo->month, gpsInfo->year );
 
