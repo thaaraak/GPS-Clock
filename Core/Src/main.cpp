@@ -456,10 +456,14 @@ void displayTimeSPI( RealTimeClock* rtc, MAX7219* max7219, volatile GPSInfo* gps
 	if ( timeDisplayMode == HR24 )
 		sprintf( tbuf, "%02d-%02d-%02d",
 					sTime.Hours, sTime.Minutes, sTime.Seconds);
-	else
+	else {
+		int hrs = sTime.Hours > 12 ? sTime.Hours-12 : sTime.Hours;
+		if ( hrs == 0 ) hrs = 12;
 		sprintf( tbuf, "%2d.%02d.%02d %c",
-					sTime.Hours > 12 ? sTime.Hours-12 : sTime.Hours, sTime.Minutes, sTime.Seconds,
+					hrs, sTime.Minutes, sTime.Seconds,
 					sTime.Hours >= 12 ? 'P' : 'A' );
+
+	}
 
 	max7219->DisplayText( tbuf, JUSTIFY_RIGHT );
 
